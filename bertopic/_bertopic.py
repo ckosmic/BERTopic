@@ -319,6 +319,7 @@ class BERTopic:
     def fit_transform(self,
                       documents: List[str],
                       embeddings: np.ndarray = None,
+                      umap_embeddings: np.ndarray = None,
                       images: List[str] = None,
                       y: Union[List[int], np.ndarray] = None) -> Tuple[List[int],
                                                                        Union[np.ndarray, None]]:
@@ -405,7 +406,8 @@ class BERTopic:
                 return self._combine_zeroshot_topics(documents, assigned_documents, assigned_embeddings)
 
         # Reduce dimensionality
-        umap_embeddings = self._reduce_dimensionality(embeddings, y)
+        if umap_embeddings is None:
+            umap_embeddings = self._reduce_dimensionality(embeddings, y)
 
         # Cluster reduced embeddings
         documents, probabilities = self._cluster_embeddings(umap_embeddings, documents, y=y)
