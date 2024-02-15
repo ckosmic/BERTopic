@@ -3237,6 +3237,8 @@ class BERTopic:
 
                 if selected_topics["topic_aspects"]:
                     for aspect in selected_topics["topic_aspects"]:
+                        if not merged_topics["topic_aspects"][aspect]:
+                            merged_topics["topic_aspects"][aspect] = {}
                         merged_topics["topic_aspects"][aspect][str(new_topic_val)] = selected_topics["topic_aspects"][aspect][str(new_topic)]
 
                 # Add new embeddings
