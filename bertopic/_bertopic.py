@@ -3096,7 +3096,7 @@ class BERTopic:
                 logger.warning("You are saving a BERTopic model without explicitly defining an embedding model."
                                "If you are using a sentence-transformers model or a HuggingFace model supported"
                                "by sentence-transformers, please save the model by using a pointer towards that model."
-                               "For example, `save_embedding_model='sentence-transformers/all-mpnet-base-v2'`", RuntimeWarning)
+                               "For example, `save_embedding_model='sentence-transformers/all-mpnet-base-v2'`")
 
             # Minimal
             save_utils.save_hf(model=self, save_directory=save_directory, serialization=serialization)
@@ -3152,7 +3152,8 @@ class BERTopic:
             topics, params, tensors, ctfidf_tensors, ctfidf_config, images = save_utils.load_files_from_hf(path)
         else:
             raise ValueError("Make sure to either pass a valid directory or HF model.")
-        topic_model = _create_model_from_files(topics, params, tensors, ctfidf_tensors, ctfidf_config, images, warn_no_backend=(embedding_model is None))
+        topic_model = _create_model_from_files(topics, params, tensors, ctfidf_tensors, ctfidf_config, images,
+                                               warn_no_backend=(embedding_model is None))
 
         # Replace embedding model if one is specifically chosen
         if embedding_model is not None:
@@ -3691,7 +3692,7 @@ class BERTopic:
         self.__dict__.update(merged_model.__dict__)
         logger.info("Zeroshot Step 3 - Completed \u2713")
 
-         # Move -1 topic back to position 0 if it exists
+        # Move -1 topic back to position 0 if it exists
         if has_outliers:
             nr_zeroshot_topics = len(set(y))
 
@@ -4477,8 +4478,8 @@ def _create_model_from_files(
 
         if warn_no_backend:
             logger.warning("You are loading a BERTopic model without explicitly defining an embedding model."
-                           "If you want to also load in an embedding model, make sure to use"
-                           "`BERTopic.load(my_model, embedding_model=my_embedding_model)`.")
+                           " If you want to also load in an embedding model, make sure to use"
+                           " `BERTopic.load(my_model, embedding_model=my_embedding_model)`.")
 
     if params.get("embedding_model") is not None:
         del params['embedding_model']
