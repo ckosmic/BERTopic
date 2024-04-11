@@ -1426,8 +1426,17 @@ class BERTopic:
         documents_per_topic = documents.groupby(['Topic'], as_index=False).agg({'Document': ' '.join})
         self.c_tf_idf_, words = self._c_tf_idf(documents_per_topic)
         self.topic_representations_ = self._extract_words_per_topic(words, documents)
+
+        # Update topic vectors
         if set(topics) != self.topics_:
-            self._create_topic_vectors()
+            # Remove outlier topic embedding if all that has changed is the outlier class
+            same_position = all([True if old_topic == new_topic else False for old_topic, new_topic in zip(self.topics_, topics) if old_topic != -1])
+            if same_position and -1 not in topics and -1 in self.topics_:
+                self.topic_embeddings_ = self.topic_embeddings_[1:]
+            else:
+                self._create_topic_vectors()
+
+        # Update topic labels
         self.topic_labels_ = {key: f"{key}_" + "_".join([word[0] for word in values[:4]])
                               for key, values in
                               self.topic_representations_.items()}
@@ -3143,10 +3152,10 @@ class BERTopic:
             topics, params, tensors, ctfidf_tensors, ctfidf_config, images = save_utils.load_files_from_hf(path)
         else:
             raise ValueError("Make sure to either pass a valid directory or HF model.")
-        topic_model = _create_model_from_files(topics, params, tensors, ctfidf_tensors, ctfidf_config, images)
+        topic_model = _create_model_from_files(topics, params, tensors, ctfidf_tensors, ctfidf_config, images, warn_no_backend=(embedding_model is None))
 
         # Replace embedding model if one is specifically chosen
-        if embedding_model is not None and type(topic_model.embedding_model) == BaseEmbedder:
+        if embedding_model is not None:
             topic_model.embedding_model = select_backend(embedding_model)
 
         return topic_model
@@ -3235,14 +3244,26 @@ class BERTopic:
                 merged_topics["topic_representations"][str(new_topic_val)] = selected_topics["topic_representations"][str(new_topic)]
                 merged_topics["topic_labels"][str(new_topic_val)] = selected_topics["topic_labels"][str(new_topic)]
 
+                # Add new aspects
                 if selected_topics["topic_aspects"]:
-                    for aspect in selected_topics["topic_aspects"]:
-                        if not merged_topics["topic_aspects"][aspect]:
+                    aspects_1 = set(merged_topics["topic_aspects"].keys())
+                    aspects_2 = set(selected_topics["topic_aspects"].keys())
+                    aspects_diff = aspects_2.difference(aspects_1)
+                    if aspects_diff:
+                        for aspect in aspects_diff:
                             merged_topics["topic_aspects"][aspect] = {}
-                        merged_topics["topic_aspects"][aspect][str(new_topic_val)] = selected_topics["topic_aspects"][aspect][str(new_topic)]
+
+                    # If the original model does not have topic aspects but the to be added model does
+                    if not merged_topics.get("topic_aspects"):
+                        merged_topics["topic_aspects"] = selected_topics["topic_aspects"]
+
+                    # If they both contain topic aspects, add to the existing set of aspects
+                    else:
+                        for aspect, values in selected_topics["topic_aspects"].items():
+                            merged_topics["topic_aspects"][aspect][str(new_topic_val)] = values[str(new_topic)]
 
                 # Add new embeddings
-                new_tensors = tensors[new_topic - selected_topics["_outliers"]]
+                new_tensors = tensors[new_topic + selected_topics["_outliers"]]
                 merged_tensors = np.vstack([merged_tensors, new_tensors])
 
             # Topic Mapper
@@ -3665,9 +3686,37 @@ class BERTopic:
         merged_model.topics_ = df.Label.values
 
         # Update the class internally
+        has_outliers = bool(self._outliers)
         self.__dict__.clear()
         self.__dict__.update(merged_model.__dict__)
         logger.info("Zeroshot Step 3 - Completed \u2713")
+
+         # Move -1 topic back to position 0 if it exists
+        if has_outliers:
+            nr_zeroshot_topics = len(set(y))
+
+            # Re-map the topics such that the -1 topic is at position 0
+            new_mappings = {}
+            for topic in self.topics_:
+                if topic < nr_zeroshot_topics:
+                    new_mappings[topic] = topic
+                elif topic == nr_zeroshot_topics:
+                    new_mappings[topic] = -1
+                else:
+                    new_mappings[topic] = topic - 1
+
+            # Re-map the topics including all representations (labels, sizes, embeddings, etc.)
+            self.topics_ = [new_mappings[topic] for topic in self.topics_]
+            self.topic_representations_ = {new_mappings[topic]: repr for topic, repr in self.topic_representations_.items()}
+            self.topic_labels_ = {new_mappings[topic]: label for topic, label in self.topic_labels_.items()}
+            self.topic_sizes_ = collections.Counter(self.topics_)
+            self.topic_embeddings_ = np.vstack([
+                self.topic_embeddings_[nr_zeroshot_topics],
+                self.topic_embeddings_[:nr_zeroshot_topics],
+                self.topic_embeddings_[nr_zeroshot_topics+1:]
+            ])
+            self._outliers = 1
+
         return self.topics_
 
     def _guided_topic_modeling(self, embeddings: np.ndarray) -> Tuple[List[int], np.array]:
